@@ -17,7 +17,7 @@ import (
 )
 
 func handleFile(file string) (err error) {
-	fm, rows, err := parseFile(file)
+	fm, rowsFmComment, rows, err := parseFile(file)
 	if err != nil {
 		return errors.Wrapf(err, "Failed to parseFile %s", file)
 	}
@@ -33,18 +33,20 @@ func handleFile(file string) (err error) {
 	outputs := []string{}
 	outputs = append(outputs, "---")
 	outputs = append(outputs, outputsFm...)
+	outputs = append(outputs, rowsFmComment...)
 	outputs = append(outputs, "---")
 	outputs = append(outputs, rows...)
 	dst := fmt.Sprintf("%s%s", file, ".dst.md")
 	return WriteFile(dst, strings.Join(outputs, "\n"))
 }
 
-func parseFile(file string) (fm map[string]any, rows []string, err error) {
+func parseFile(file string) (fm map[string]any, rowsFmComment []string, rows []string, err error) {
+	rowsFmComment = []string{}
 	rows = []string{}
 	fm = make(map[string]any)
 	fp, err := os.Open(filepath.Clean(file))
 	if err != nil {
-		return fm, rows, err
+		return fm, rowsFmComment, rows, err
 	}
 	defer func() {
 		err = fp.Close()
@@ -68,6 +70,11 @@ func parseFile(file string) (fm map[string]any, rows []string, err error) {
 			continue
 		}
 		if frontMatter {
+			regComment := regexp.MustCompile(`^#.*`)
+			if regComment.MatchString(line) {
+				rowsFmComment = append(rowsFmComment, line)
+				continue
+			}
 			rowsFm = append(rowsFm, line)
 			continue
 		}
@@ -76,7 +83,7 @@ func parseFile(file string) (fm map[string]any, rows []string, err error) {
 	}
 
 	err = yaml.Unmarshal([]byte(strings.Join(rowsFm, "\n")), &fm)
-	return fm, rows, err
+	return fm, rowsFmComment, rows, err
 }
 
 // draft: false
@@ -160,7 +167,7 @@ func getAppendOutputs(key string, val any, asComment bool) []string {
 	} else if reflect.TypeOf(val).Kind() == reflect.Map {
 		// TODO map for cover. cover must be img.png?
 		outputs = append(outputs, fmt.Sprintf(comment+"%s:", key))
-		for k, v := range val.(map[string]string) {
+		for k, v := range val.(map[string]any) {
 			outputs = append(outputs, fmt.Sprintf(comment+"  %s: %s", k, v))
 		}
 		return outputs
